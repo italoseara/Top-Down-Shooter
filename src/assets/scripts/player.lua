@@ -45,6 +45,14 @@ function Player:move(dt)
     if love.keyboard.isDown("w") then
         self.velocity.y = self.velocity.y - speed * dt
     end
+
+    if self.velocity.x < 1 and self.velocity.x > 1 then
+        self.velocity.x = 0
+    end
+
+    if self.velocity.y < 1 and self.velocity.y > 1 then
+        self.velocity.y = 0
+    end
 end
 
 function Player:physics(dt)
@@ -67,13 +75,20 @@ function Player:animate()
         if self.imageDistortion.y < 0 then
             self.imageDistortion.y = self.imageDistortion.y * 0.25
         end
+
         self.dustParticles:emit(1)
     else
+        -- Fade effect
         self.imageRotation = self.imageRotation * 0.9
+
+        if self.imageRotation < 0.01 and self.imageRotation > -0.01 then
+            self.imageRotation = 0
+        end
     end
 
     -- If the player is moving to the left or right, flip the image
-    if self.velocity.x < 0 then
+    local mouseX, mouseY = love.mouse.getPosition()
+    if mouseX < self.position.x then
         self.direction = -1
     end
 end
@@ -100,18 +115,13 @@ function Player:draw()
     local mouseX, mouseY = love.mouse.getPosition()
     local angle = math.atan2(mouseY - self.position.y, mouseX - self.position.x)
 
-    local gunScaleY = scale
-    if angle > math.pi / 2 or angle < -math.pi / 2 then
-        gunScaleY = -scale
-    end
-
     love.graphics.draw(
         self.gun,
         self.position.x,
         self.position.y - self.image:getHeight() * scale / 2,
         angle,
         scale,
-        gunScaleY,
+        scale * self.direction,
         self.gun:getWidth() / 2 - 4,
         self.gun:getHeight() / 2
     )
