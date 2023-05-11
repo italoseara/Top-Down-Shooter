@@ -46,11 +46,11 @@ function Player:move(dt)
         self.velocity.y = self.velocity.y - speed * dt
     end
 
-    if self.velocity.x < 1 and self.velocity.x > 1 then
+    if self.velocity.x < 1 and self.velocity.x > -1 then
         self.velocity.x = 0
     end
 
-    if self.velocity.y < 1 and self.velocity.y > 1 then
+    if self.velocity.y < 1 and self.velocity.y > -1 then
         self.velocity.y = 0
     end
 end
