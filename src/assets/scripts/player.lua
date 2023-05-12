@@ -1,148 +1,308 @@
 local Class = require "libs.classic"
 local Vector = require "libs.vector"
 
-local Player = Class:extend()
-local scale = 7.5
+local Direction = {
+    LEFT = -1,
+    RIGHT = 1,
+}
 
-function Player:new(x, y, path)
+local Items = {
+    BLUE_GUN = {
+        name = "Blue",
+        cooldown = 0.15,
+        automatic = false,
+        bulletSpeed = 150,
+        spread = 0.2,
+        cameraShake = 0.2
+    },
+    GOLD_GUN = {
+        name = "Gold",
+        cooldown = 0.1,
+        automatic = true,
+        bulletSpeed = 200,
+        spread = 0.5,
+        cameraShake = 0.3
+    },
+    RED_GUN = {
+        name = "Red",
+        cooldown = 0.05,
+        automatic = true,
+        bulletSpeed = 300,
+        spread = 0.05,
+        cameraShake = 1
+    }
+}
+
+local Player = Class:extend()
+
+function Player:new(x, y)
+    -- Movement
     self.position = Vector(x, y)
     self.velocity = Vector(0, 0)
     self.friction = 10
-    self.speed = 5000
+    self.speed = 1000
 
-    self.image = love.graphics.newImage(path .. "/player.png")
-    self.gun = love.graphics.newImage(path .. "/gun.png")
+    -- Image
+    self.image = love.graphics.newImage(Config.sprites.player)
+    self.bulletImage = love.graphics.newImage(Config.sprites.bullet)
 
-    self.imageDistortion = Vector(0, 0)
-    self.imageRotation = 0
-    self.direction = 1
+    -- Gun
+    self.lastUse = 0
+    self.handDistortion = 0
 
-    self.dustParticles = love.graphics.newParticleSystem(love.graphics.newImage("assets/sprites/particles/dust.png"), 4)
+    self.isShooting = false
+    self.isHoldingFire = false
+
+    -- Inventory
+    self.slot = 2
+    self.inventory = {
+        Items.BLUE_GUN,
+        Items.GOLD_GUN,
+        Items.RED_GUN
+    }
+    self.inventory[self.slot].image = love.graphics.newImage(Config.sprites[string.lower(self.inventory[self.slot].name)])
+    self.lastSwap = 0
+    self.isHoldingSwap = false
+
+    -- Animation
+    self.distortion = 0
+    self.rotation = 0
+    self.direction = Direction.RIGHT
+
+    self.dust = love.graphics.newParticleSystem(love.graphics.newImage(Config.sprites.dust), 4)
+
+    -- Colliders
+    self.collider = level.world:newBSGRectangleCollider(
+        self.position.x - self.image:getWidth() / 2 + 1,
+        self.position.y - self.image:getHeight(),
+        6, 8, 2
+    )
+    self.collider:setCollisionClass("Player")
+    self.collider:setFixedRotation(true)
+
+    self.bullets = {}
 end
 
 function Player:move(dt)
-    local speed = self.speed
+    local direction = Vector(0, 0)
 
-    if (love.keyboard.isDown("w") and love.keyboard.isDown("a")) or
-    (love.keyboard.isDown("w") and love.keyboard.isDown("d")) or
-    (love.keyboard.isDown("s") and love.keyboard.isDown("a")) or
-    (love.keyboard.isDown("s") and love.keyboard.isDown("d")) then
-        speed = speed * 0.7071
+    if love.keyboard.isDown(Config.keybinds.up) then direction.y = direction.y - 1 end
+    if love.keyboard.isDown(Config.keybinds.down) then direction.y = direction.y + 1 end
+    if love.keyboard.isDown(Config.keybinds.left) then direction.x = direction.x - 1 end
+    if love.keyboard.isDown(Config.keybinds.right) then direction.x = direction.x + 1 end
+
+    if direction:len() > 0 then direction = direction:normalized() end
+
+    self.velocity = self.velocity + direction * self.speed * dt
+end
+
+function Player:shoot()
+    -- Destroy bullets after 2 seconds or when they hit a wall
+    for i = #self.bullets, 1, -1 do
+        local bullet = self.bullets[i]
+        if love.timer.getTime() - bullet.creationTime > 2 then
+            bullet:destroy()
+            table.remove(self.bullets, i)
+        end
+
+        if bullet:enter("Solid") then
+            bullet:destroy()
+            table.remove(self.bullets, i)
+        end
     end
 
-    if love.keyboard.isDown("d") then
-        self.velocity.x = self.velocity.x + speed * dt
+    -- Shoot bullets
+    if love.mouse.isDown(Config.keybinds.shoot) then
+        if not self.inventory[self.slot].automatic and self.isHoldingFire then return end
+        if not self.isHoldingFire then self.isHoldingFire = true end
+        if not self.isShooting then self.isShooting = true end
+        if love.timer.getTime() - self.lastUse < self.inventory[self.slot].cooldown then return end
+
+        local direction = Vector(mouse.x, mouse.y) - self.position
+        direction = direction:normalized()
+
+        -- Apply a recoil force to the player
+        self.velocity = self.velocity - direction * self.inventory[self.slot].bulletSpeed / 5
+
+        direction = direction + Vector(math.random() * self.inventory[self.slot].spread - self.inventory[self.slot].spread / 2, math.random() * self.inventory[self.slot].spread - self.inventory[self.slot].spread / 2)
+
+        local bullet = level.world:newCircleCollider(
+            self.collider:getX() + direction.x * 10,
+            self.collider:getY() + direction.y * 10,
+            2
+        )
+
+        self.lastUse = love.timer.getTime()
+        bullet.creationTime = love.timer.getTime()
+
+        bullet.linearVelocityX, bullet.linearVelocityY = direction.x * self.inventory[self.slot].bulletSpeed, direction.y * self.inventory[self.slot].bulletSpeed
+        bullet:setLinearVelocity(bullet.linearVelocityX, bullet.linearVelocityY)
+        bullet:setCollisionClass("Bullet")
+        bullet:setFixedRotation(true)
+
+        table.insert(self.bullets, bullet)
+        love.audio.play(Config.sounds.shoot)
     end
 
-    if love.keyboard.isDown("a") then
-        self.velocity.x = self.velocity.x - speed * dt
+    if self.isHoldingFire and not love.mouse.isDown(Config.keybinds.shoot) then self.isHoldingFire = false end
+end
+
+function Player:swapWeapon()
+
+    if not (love.keyboard.isDown(Config.keybinds.swapLeft) or love.keyboard.isDown(Config.keybinds.swapRight)) then
+        if self.isHoldingSwap then self.isHoldingSwap = false end
+        return
     end
 
-    if love.keyboard.isDown("s") then
-        self.velocity.y = self.velocity.y + speed * dt
+    if self.isHoldingSwap then return end
+    if not self.isHoldingSwap then self.isHoldingSwap = true end
+    if love.timer.getTime() - self.lastSwap < 0.1 then return end
+
+    self.lastSwap = love.timer.getTime()
+
+    if love.keyboard.isDown(Config.keybinds.swapLeft) then
+        self.slot = self.slot - 1
+        if self.slot < 1 then
+            self.slot = #self.inventory
+        end
+
+        self.isHoldingSwap = true
     end
 
-    if love.keyboard.isDown("w") then
-        self.velocity.y = self.velocity.y - speed * dt
+    if love.keyboard.isDown(Config.keybinds.swapRight) then
+        self.slot = self.slot + 1
+        if self.slot > #self.inventory then
+            self.slot = 1
+        end
+
+        self.isHoldingSwap = true
     end
 
-    if self.velocity.x < 1 and self.velocity.x > -1 then
-        self.velocity.x = 0
-    end
-
-    if self.velocity.y < 1 and self.velocity.y > -1 then
-        self.velocity.y = 0
-    end
+    -- Update the player's gun image
+    self.inventory[self.slot].image = love.graphics.newImage(Config.sprites[string.lower(self.inventory[self.slot].name)])
 end
 
 function Player:physics(dt)
-    self.position = self.position + self.velocity * dt
+    -- Move the Collider
+    self.collider:setLinearVelocity(self.velocity.x, self.velocity.y)
+
+    self.position.x = self.collider:getX()
+    self.position.y = self.collider:getY() + 4
     self.velocity = self.velocity * (1 - math.min(dt * self.friction, 1))
 end
 
 function Player:animate()
+    if self.isShooting then
+        -- Shake the camera when shooting
+        camera:move(-math.random() * self.inventory[self.slot].cameraShake, -math.random() * self.inventory[self.slot].cameraShake)
+
+        -- Animate a recoil effect when shooting
+        self.handDistortion = math.min(-math.sin((love.timer.getTime() - self.lastUse) * 20) * 2 / Config.scale, 0)
+        
+        if love.timer.getTime() - self.lastUse > 0.1 then
+            self.isShooting = false
+        end
+    else
+        -- Fade out the recoil effect when not shooting
+        self.handDistortion = self.handDistortion * 0.9
+    end
+
     -- Make idle animation using imageDistortion and sin function
-    self.direction = 1
-    self.imageDistortion.x = 0
-    self.imageDistortion.y = math.sin(love.timer.getTime() * 10) / 5
+    self.direction = Direction.RIGHT
+    self.distortion = math.sin(love.timer.getTime() * 10) / 5 / Config.scale
 
     -- If the player is moving, make the player wobble
-    if self.velocity.x > 70 or self.velocity.x < -70 or
-    self.velocity.y > 70 or self.velocity.y < -70 then
-        self.imageRotation = math.sin(love.timer.getTime() * 12) / 12
-        self.imageDistortion.y = math.sin(love.timer.getTime() * 20)
+    if self.velocity:len() > 70 then
+        self.rotation = math.sin(love.timer.getTime() * 12) / 12
+        self.distortion = math.sin(love.timer.getTime() * 20) / Config.scale
 
-        if self.imageDistortion.y < 0 then
-            self.imageDistortion.y = self.imageDistortion.y * 0.25
-        end
-
-        self.dustParticles:emit(1)
+        self.dust:emit(1)
     else
-        -- Fade effect
-        self.imageRotation = self.imageRotation * 0.9
-
-        if self.imageRotation < 0.01 and self.imageRotation > -0.01 then
-            self.imageRotation = 0
-        end
+        self.rotation = self.rotation * 0.9
     end
 
     -- If the player is moving to the left or right, flip the image
-    local mouseX, mouseY = love.mouse.getPosition()
-    if mouseX < self.position.x then
-        self.direction = -1
-    end
+    if mouse.x < self.position.x then self.direction = Direction.LEFT end
 end
 
 function Player:update(dt)
-    self.dustParticles:update(dt)
+    self.dust:update(dt)
+
     self:animate()
+
     self:move(dt)
     self:physics(dt)
+
+    self:swapWeapon()
+    self:shoot()
 end
 
 function Player:draw()
     -- Draw dust particles
-    self.dustParticles:setPosition(self.position.x, self.position.y)
-    self.dustParticles:setDirection(math.pi / 2 + (math.pi / 2 * self.direction))
-    self.dustParticles:setSpread(math.pi / 8)
-    self.dustParticles:setSpeed(100, 200)
-    self.dustParticles:setSizes(scale, scale / 2, scale / 4)
-    self.dustParticles:setParticleLifetime(0.2, 0.2)
+    self.dust:setPosition(self.position.x, self.position.y)
 
-    love.graphics.draw(self.dustParticles)
+    -- Get the direction of the velocity and set the direction of the particles
+    local direction = self.velocity:normalized()
+    local directionAngle = math.atan2(-direction.y, -direction.x)
 
-    -- Draw gun in the center of the player
-    local mouseX, mouseY = love.mouse.getPosition()
-    local angle = math.atan2(mouseY - self.position.y, mouseX - self.position.x)
+    self.dust:setDirection(directionAngle)
+    self.dust:setSpread(math.pi / 8)
+    self.dust:setSpeed(20, 30)
+    self.dust:setSizes(1, 1 / 2, 1 / 4)
+    self.dust:setParticleLifetime(0.2, 0.2)
 
+    love.graphics.draw(self.dust)
+
+    -- Draw gun
     love.graphics.draw(
-        self.gun,
+        self.inventory[self.slot].image,
         self.position.x,
-        self.position.y - self.image:getHeight() * scale / 2,
-        angle,
-        scale,
-        scale * self.direction,
-        self.gun:getWidth() / 2 - 4,
-        self.gun:getHeight() / 2
+        self.position.y - self.image:getHeight() / 2,
+        math.atan2(mouse.y - self.position.y, mouse.x - self.position.x),
+        1 + self.handDistortion,
+        self.direction,
+        self.inventory[self.slot].image:getWidth() / 2 - 4,
+        self.inventory[self.slot].image:getHeight() / 2
     )
 
-    -- Draw player, apply the image distortion to the scale and position
+    -- Draw player
     love.graphics.draw(
         self.image,
         self.position.x,
         self.position.y,
-        self.imageRotation,
-        scale * self.direction + self.imageDistortion.x,
-        scale + self.imageDistortion.y,
+        self.rotation,
+        self.direction,
+        1 + self.distortion,
         self.image:getWidth() / 2,
         self.image:getHeight()
     )
-    
-    love.graphics.setColor(1, 1, 1, 0.5)
-    love.graphics.print("Image distortion: " .. self.imageDistortion.x .. ", " .. self.imageDistortion.y, 10, 10)
-    love.graphics.print("Image rotation: " .. self.imageRotation, 10, 30)
-    love.graphics.print("Velocity: " .. self.velocity.x .. ", " .. self.velocity.y, 10, 50)
-    love.graphics.setColor(1, 1, 1, 1)
+
+    -- Draw bullets
+    for _, bullet in ipairs(self.bullets) do
+        local angle = math.atan2(bullet.linearVelocityY, bullet.linearVelocityX)
+        local trail = 8
+
+        -- Draw bullet trail
+        love.graphics.setColor(1, 1, 1, 0.3)
+        love.graphics.polygon(
+            "fill", 
+            bullet:getX() + math.cos(angle + math.pi / 2) * 2, bullet:getY() + math.sin(angle + math.pi / 2) * 2,
+            bullet:getX() + math.cos(angle - math.pi / 2) * 2, bullet:getY() + math.sin(angle - math.pi / 2) * 2,
+            bullet:getX() - math.cos(angle) * trail, bullet:getY() - math.sin(angle) * trail
+        )
+        love.graphics.setColor(1, 1, 1, 1)
+
+        love.graphics.draw(
+            self.bulletImage,
+            bullet:getX(),
+            bullet:getY(),
+            angle,
+            1,
+            1,
+            self.bulletImage:getWidth() / 2,
+            self.bulletImage:getHeight() / 2
+        )
+    end
 end
 
 return Player

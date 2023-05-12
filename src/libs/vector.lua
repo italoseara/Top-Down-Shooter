@@ -1,215 +1,218 @@
-local module = {
-    _version = "vector.lua v2019.14.12",
-    _description = "a simple vector library for Lua based on the PVector class from processing",
-    _url = "https://github.com/themousery/vector.lua",
-    _license = [[
-      Copyright (c) 2018 themousery
-  
-      Permission is hereby granted, free of charge, to any person obtaining a copy
-      of this software and associated documentation files (the "Software"), to deal
-      in the Software without restriction, including without limitation the rights
-      to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-      copies of the Software, and to permit persons to whom the Software is
-      furnished to do so, subject to the following conditions:
-  
-      The above copyright notice and this permission notice shall be included in all
-      copies or substantial portions of the Software.
-  
-      THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-      IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-      FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-      AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-      LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-      OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-      SOFTWARE.
-    ]]
-  }
-  
-  -- create the module
-  local vector = {}
-  vector.__index = vector
-  
-  -- get a random function from Love2d or base lua, in that order.
-  local rand = math.random
-  if love and love.math then rand = love.math.random end
-  
-  -- makes a new vector
-  local function new(x,y)
-    return setmetatable({x=x or 0, y=y or 0}, vector)
-  end
-  
-  -- makes a new vector from an angle
-  local function fromAngle(theta)
-    return new(math.cos(theta), -math.sin(theta))
-  end
-  
-  -- makes a vector with a random direction
-  local function random()
-    return fromAngle(rand() * math.pi*2)
-  end
-  
-  -- check if an object is a vector
-  local function isvector(t)
-    return getmetatable(t) == vector
-  end
-  
-  -- set the values of the vector to something new
-  function vector:set(x,y)
-    if isvector(x) then self.x, self.y = x.x, x.y;return end
-    self.x, self.y = x or self.x, y or self.y
-    return self
-  end
-  
-  -- replace the values of a vector with the values of another vector
-  function vector:replace(v)
-    assert(isvector(v), "replace: wrong argument type: (expected <vector>, got "..type(v)..")")
-    self.x, self.y = v.x, v.y
-    return self
-  end
-  
-  -- returns a copy of a vector
-  function vector:clone()
-    return new(self.x, self.y)
-  end
-  
-  -- get the magnitude of a vector
-  function vector:getmag()
-    return math.sqrt(self.x^2 + self.y^2)
-  end
-  
-  -- get the magnitude squared of a vector
-  function vector:magSq()
-    return self.x^2 + self.y^2
-  end
-  
-  -- set the magnitude of a vector
-  function vector:setmag(mag)
-    assert(self:getmag() ~= 0, "Cannot set magnitude when direction is ambiguous")
-    self:norm()
-    local v = self * mag
-    self:replace(v)
-    return self
-  end
-  
-  -- meta function to make vectors negative
-  -- ex: (negative) -vector(5,6) is the same as vector(-5,-6)
-  function vector.__unm(v)
-    return new(-v.x, -v.y)
-  end
-  
-  -- meta function to add vectors together
-  -- ex: (vector(5,6) + vector(6,5)) is the same as vector(11,11)
-  function vector.__add(a,b)
-    assert(isvector(a) and isvector(b), "add: wrong argument types: (expected <vector> and <vector>)")
-    return new(a.x+b.x, a.y+b.y)
-  end
-  
-  -- meta function to subtract vectors
-  function vector.__sub(a,b)
-    assert(isvector(a) and isvector(b), "sub: wrong argument types: (expected <vector> and <vector>)")
-    return new(a.x-b.x, a.y-b.y)
-  end
-  
-  -- meta function to multiply vectors
-  function vector.__mul(a,b)
-    if type(a) == 'number' then 
-      return new(a * b.x, a * b.y)
-    elseif type(b) == 'number' then
-      return new(a.x * b, a.y * b)
-    else
-      assert(isvector(a) and isvector(b),  "mul: wrong argument types: (expected <vector> or <number>)")
-      return new(a.x*b.x, a.y*b.y)
-    end
-  end
-  
-  -- meta function to divide vectors
-  function vector.__div(a,b)
-    assert(isvector(a) and type(b) == "number", "div: wrong argument types (expected <vector> and <number>)")
-    return new(a.x/b, a.y/b)
-  end
-  
-  -- meta function to check if vectors have the same values
-  function vector.__eq(a,b)
-    assert(isvector(a) and isvector(b), "eq: wrong argument types (expected <vector> and <vector>)")
-    return a.x==b.x and a.y==b.y
-  end
-  
-  -- meta function to change how vectors appear as string
-  -- ex: print(vector(2,8)) - this prints '(2,8)'
-  function vector:__tostring()
-    return "("..self.x..", "..self.y..")"
-  end
-  
-  -- get the distance between two vectors
-  function vector.dist(a,b)
-    assert(isvector(a) and isvector(b), "dist: wrong argument types (expected <vector> and <vector>)")
-    return math.sqrt((a.x-b.x)^2 + (a.y-b.y)^2)
-  end
-  
-  -- return the dot product of the vector
-  function vector:dot(v)
-    assert(isvector(v), "dot: wrong argument type (expected <vector>)")
-    return self.x * v.x + self.y * v.y
-  end
-  
-  -- normalize the vector (give it a magnitude of 1)
-  function vector:norm()
-    local m = self:getmag()
-    if m~=0 then
-      self:replace(self / m)
-    end
-    return self
-  end
-  
-  -- limit the vector to a certain amount
-  function vector:limit(max)
-    assert(type(max) == 'number', "limit: wrong argument type (expected <number>)")
-    local mSq = self:magSq()
-    if mSq > max^2 then
-      self:setmag(max)
-    end
-    return self
-  end
-  
-  -- Clamp each axis between max and min's corresponding axis
-  function vector:clamp(min, max)
-    assert(isvector(min) and isvector(max), "clamp: wrong argument type (expected <vector>) and <vector>")
-    local x = math.min( math.max( self.x, min.x ), max.x )
-    local y = math.min( math.max( self.y, min.y ), max.y )
-    self:set(x,y)
-    return self
-  end
-  
-  -- get the heading (direction) of a vector
-  function vector:heading()
-    return -math.atan2(self.y, self.x)
-  end
-  
-  -- rotate a vector clockwise by a certain number of radians
-  function vector:rotate(theta)
-    local s = math.sin(theta)
-    local c = math.cos(theta)
-    local v = new(
-                  (c * self.x) + (s * self.y),
-                  -(s * self.x) + (c * self.y))
-    self:replace(v)
-    return self
-  end
-  
-  -- return x and y of vector as a regular array
-  function vector:array()
-    return {self.x, self.y}
-  end
-  
-  -- return x and y of vector, unpacked from table
-  function vector:unpack()
-    return self.x, self.y
-  end
-  
-  
-  -- pack up and return module
-  module.new = new
-  module.random = random
-  module.fromAngle = fromAngle
-  module.isvector = isvector
-  return setmetatable(module, {__call = function(_,...) return new(...) end})
+--[[
+Copyright (c) 2010-2013 Matthias Richter
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+Except as contained in this notice, the name(s) of the above copyright holders
+shall not be used in advertising or otherwise to promote the sale, use or
+other dealings in this Software without prior written authorization.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+]]--
+
+local assert = assert
+local sqrt, cos, sin, atan2 = math.sqrt, math.cos, math.sin, math.atan2
+
+local vector = {}
+vector.__index = vector
+
+local function new(x,y)
+	return setmetatable({x = x or 0, y = y or 0}, vector)
+end
+local zero = new(0,0)
+
+local function fromPolar(angle, radius)
+	radius = radius or 1
+	return new(cos(angle) * radius, sin(angle) * radius)
+end
+
+local function randomDirection(len_min, len_max)
+	len_min = len_min or 1
+	len_max = len_max or len_min
+
+	assert(len_max > 0, "len_max must be greater than zero")
+	assert(len_max >= len_min, "len_max must be greater than or equal to len_min")
+	
+	return fromPolar(math.random() * 2*math.pi,
+	                 math.random() * (len_max-len_min) + len_min)
+end
+
+local function isvector(v)
+	return type(v) == 'table' and type(v.x) == 'number' and type(v.y) == 'number'
+end
+
+function vector:clone()
+	return new(self.x, self.y)
+end
+
+function vector:unpack()
+	return self.x, self.y
+end
+
+function vector:__tostring()
+	return "("..tonumber(self.x)..","..tonumber(self.y)..")"
+end
+
+function vector.__unm(a)
+	return new(-a.x, -a.y)
+end
+
+function vector.__add(a,b)
+	assert(isvector(a) and isvector(b), "Add: wrong argument types (<vector> expected)")
+	return new(a.x+b.x, a.y+b.y)
+end
+
+function vector.__sub(a,b)
+	assert(isvector(a) and isvector(b), "Sub: wrong argument types (<vector> expected)")
+	return new(a.x-b.x, a.y-b.y)
+end
+
+function vector.__mul(a,b)
+	if type(a) == "number" then
+		return new(a*b.x, a*b.y)
+	elseif type(b) == "number" then
+		return new(b*a.x, b*a.y)
+	else
+		assert(isvector(a) and isvector(b), "Mul: wrong argument types (<vector> or <number> expected)")
+		return a.x*b.x + a.y*b.y
+	end
+end
+
+function vector.__div(a,b)
+	assert(isvector(a) and type(b) == "number", "wrong argument types (expected <vector> / <number>)")
+	return new(a.x / b, a.y / b)
+end
+
+function vector.__eq(a,b)
+	return a.x == b.x and a.y == b.y
+end
+
+function vector.__lt(a,b)
+	return a.x < b.x or (a.x == b.x and a.y < b.y)
+end
+
+function vector.__le(a,b)
+	return a.x <= b.x and a.y <= b.y
+end
+
+function vector.permul(a,b)
+	assert(isvector(a) and isvector(b), "permul: wrong argument types (<vector> expected)")
+	return new(a.x*b.x, a.y*b.y)
+end
+
+function vector:toPolar()
+	return new(atan2(self.x, self.y), self:len())
+end
+
+function vector:len2()
+	return self.x * self.x + self.y * self.y
+end
+
+function vector:len()
+	return sqrt(self.x * self.x + self.y * self.y)
+end
+
+function vector.dist(a, b)
+	assert(isvector(a) and isvector(b), "dist: wrong argument types (<vector> expected)")
+	local dx = a.x - b.x
+	local dy = a.y - b.y
+	return sqrt(dx * dx + dy * dy)
+end
+
+function vector.dist2(a, b)
+	assert(isvector(a) and isvector(b), "dist: wrong argument types (<vector> expected)")
+	local dx = a.x - b.x
+	local dy = a.y - b.y
+	return (dx * dx + dy * dy)
+end
+
+function vector:normalizeInplace()
+	local l = self:len()
+	if l > 0 then
+		self.x, self.y = self.x / l, self.y / l
+	end
+	return self
+end
+
+function vector:normalized()
+	return self:clone():normalizeInplace()
+end
+
+function vector:rotateInplace(phi)
+	local c, s = cos(phi), sin(phi)
+	self.x, self.y = c * self.x - s * self.y, s * self.x + c * self.y
+	return self
+end
+
+function vector:rotated(phi)
+	local c, s = cos(phi), sin(phi)
+	return new(c * self.x - s * self.y, s * self.x + c * self.y)
+end
+
+function vector:perpendicular()
+	return new(-self.y, self.x)
+end
+
+function vector:projectOn(v)
+	assert(isvector(v), "invalid argument: cannot project vector on " .. type(v))
+	-- (self * v) * v / v:len2()
+	local s = (self.x * v.x + self.y * v.y) / (v.x * v.x + v.y * v.y)
+	return new(s * v.x, s * v.y)
+end
+
+function vector:mirrorOn(v)
+	assert(isvector(v), "invalid argument: cannot mirror vector on " .. type(v))
+	-- 2 * self:projectOn(v) - self
+	local s = 2 * (self.x * v.x + self.y * v.y) / (v.x * v.x + v.y * v.y)
+	return new(s * v.x - self.x, s * v.y - self.y)
+end
+
+function vector:cross(v)
+	assert(isvector(v), "cross: wrong argument types (<vector> expected)")
+	return self.x * v.y - self.y * v.x
+end
+
+-- ref.: http://blog.signalsondisplay.com/?p=336
+function vector:trimInplace(maxLen)
+	local s = maxLen * maxLen / self:len2()
+	s = (s > 1 and 1) or math.sqrt(s)
+	self.x, self.y = self.x * s, self.y * s
+	return self
+end
+
+function vector:angleTo(other)
+	if other then
+		return atan2(self.y, self.x) - atan2(other.y, other.x)
+	end
+	return atan2(self.y, self.x)
+end
+
+function vector:trimmed(maxLen)
+	return self:clone():trimInplace(maxLen)
+end
+
+
+-- the module
+return setmetatable({
+	new             = new,
+	fromPolar       = fromPolar,
+	randomDirection = randomDirection,
+	isvector        = isvector,
+	zero            = zero
+}, {
+	__call = function(_, ...) return new(...) end
+})
