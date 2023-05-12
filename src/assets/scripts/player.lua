@@ -13,7 +13,10 @@ local Items = {
         automatic = false,
         bulletSpeed = 150,
         spread = 0.2,
-        cameraShake = 0.2
+        cameraShake = 0.2,
+        maxAmmo = 12,
+        ammo = 12,
+        reloadTime = 1,
     },
     GOLD_GUN = {
         name = "Gold",
@@ -21,7 +24,10 @@ local Items = {
         automatic = true,
         bulletSpeed = 200,
         spread = 0.5,
-        cameraShake = 0.3
+        cameraShake = 0.3,
+        maxAmmo = 30,
+        ammo = 30,
+        reloadTime = 1,
     },
     RED_GUN = {
         name = "Red",
@@ -29,7 +35,10 @@ local Items = {
         automatic = true,
         bulletSpeed = 300,
         spread = 0.05,
-        cameraShake = 1
+        cameraShake = 1,
+        maxAmmo = 100,
+        ammo = 100,
+        reloadTime = 1,
     }
 }
 
@@ -62,7 +71,10 @@ function Player:new(x, y)
     }
     self.inventory[self.slot].image = love.graphics.newImage(Config.sprites[string.lower(self.inventory[self.slot].name)])
     self.lastSwap = 0
+    self.lastReload = 0
+    self.isReloading = false
     self.isHoldingSwap = false
+    self.isHoldingReload = false
 
     -- Animation
     self.distortion = 0
@@ -113,6 +125,8 @@ function Player:shoot()
 
     -- Shoot bullets
     if love.mouse.isDown(Config.keybinds.shoot) then
+        if self.inventory[self.slot].ammo <= 0 then return end
+        if self.isReloading then return end
         if not self.inventory[self.slot].automatic and self.isHoldingFire then return end
         if not self.isHoldingFire then self.isHoldingFire = true end
         if not self.isShooting then self.isShooting = true end
@@ -142,6 +156,8 @@ function Player:shoot()
 
         table.insert(self.bullets, bullet)
         love.audio.play(Config.sounds.shoot)
+
+        self.inventory[self.slot].ammo = self.inventory[self.slot].ammo - 1
     end
 
     if self.isHoldingFire and not love.mouse.isDown(Config.keybinds.shoot) then self.isHoldingFire = false end
@@ -155,6 +171,7 @@ function Player:swapWeapon()
     end
 
     if self.isHoldingSwap then return end
+    if self.isReloading then return end
     if not self.isHoldingSwap then self.isHoldingSwap = true end
     if love.timer.getTime() - self.lastSwap < 0.1 then return end
 
@@ -180,6 +197,29 @@ function Player:swapWeapon()
 
     -- Update the player's gun image
     self.inventory[self.slot].image = love.graphics.newImage(Config.sprites[string.lower(self.inventory[self.slot].name)])
+end
+
+function Player:reloadWeapon()
+
+    if self.isHoldingReload and not love.keyboard.isDown(Config.keybinds.reload) then self.isHoldingReload = false end
+
+    if self.isReloading and love.timer.getTime() - self.lastReload > self.inventory[self.slot].reloadTime then
+        self.isReloading = false
+        self.inventory[self.slot].ammo = self.inventory[self.slot].maxAmmo
+    end
+
+    if love.keyboard.isDown(Config.keybinds.reload) then
+        if self.isHoldingReload then return end
+        if not self.isHoldingReload then self.isHoldingReload = true end
+
+        if self.inventory[self.slot].ammo == self.inventory[self.slot].maxAmmo then return end
+        if love.timer.getTime() - self.lastReload < self.inventory[self.slot].reloadTime then return end
+
+        self.isReloading = true
+        self.lastReload = love.timer.getTime()
+
+        love.audio.play(Config.sounds.reload)
+    end
 end
 
 function Player:physics(dt)
@@ -234,50 +274,35 @@ function Player:update(dt)
     self:physics(dt)
 
     self:swapWeapon()
+    self:reloadWeapon()
     self:shoot()
 end
 
-function Player:draw()
-    -- Draw dust particles
-    self.dust:setPosition(self.position.x, self.position.y)
+function Player:getGunAngle()
+    local angle1 = math.rad(135)
+    local angle2 = math.rad(-225)
+    local angle3 = math.rad(45)
 
-    -- Get the direction of the velocity and set the direction of the particles
-    local direction = self.velocity:normalized()
-    local directionAngle = math.atan2(-direction.y, -direction.x)
+    local gunAngle = math.atan2(mouse.y - self.position.y, mouse.x - self.position.x)
 
-    self.dust:setDirection(directionAngle)
-    self.dust:setSpread(math.pi / 8)
-    self.dust:setSpeed(20, 30)
-    self.dust:setSizes(1, 1 / 2, 1 / 4)
-    self.dust:setParticleLifetime(0.2, 0.2)
+    if not self.isReloading then
+        return gunAngle
+    end
 
-    love.graphics.draw(self.dust)
+    if self.direction == Direction.LEFT then
+        if gunAngle > math.rad(135) or gunAngle < -math.rad(90) then
+        gunAngle = Lerp(gunAngle, angle2, math.min(love.timer.getTime() - self.lastReload, 0.2) / 0.2)
+        else
+        gunAngle = Lerp(gunAngle, angle1, math.min(love.timer.getTime() - self.lastReload, 0.2) / 0.2)
+        end
+    else
+        gunAngle = Lerp(gunAngle, angle3, math.min(love.timer.getTime() - self.lastReload, 0.2) / 0.2)
+    end
 
-    -- Draw gun
-    love.graphics.draw(
-        self.inventory[self.slot].image,
-        self.position.x,
-        self.position.y - self.image:getHeight() / 2,
-        math.atan2(mouse.y - self.position.y, mouse.x - self.position.x),
-        1 + self.handDistortion,
-        self.direction,
-        self.inventory[self.slot].image:getWidth() / 2 - 4,
-        self.inventory[self.slot].image:getHeight() / 2
-    )
+    return gunAngle
+end
 
-    -- Draw player
-    love.graphics.draw(
-        self.image,
-        self.position.x,
-        self.position.y,
-        self.rotation,
-        self.direction,
-        1 + self.distortion,
-        self.image:getWidth() / 2,
-        self.image:getHeight()
-    )
-
-    -- Draw bullets
+function Player:drawBullets()
     for _, bullet in ipairs(self.bullets) do
         local angle = math.atan2(bullet.linearVelocityY, bullet.linearVelocityX)
         local trail = 8
@@ -301,6 +326,73 @@ function Player:draw()
             1,
             self.bulletImage:getWidth() / 2,
             self.bulletImage:getHeight() / 2
+        )
+    end
+end
+
+function Player:draw()
+    -- Draw dust particles
+    self.dust:setPosition(self.position.x, self.position.y)
+
+    -- Get the direction of the velocity and set the direction of the particles
+    local direction = self.velocity:normalized()
+    local directionAngle = math.atan2(-direction.y, -direction.x)
+
+    self.dust:setDirection(directionAngle)
+    self.dust:setSpread(math.pi / 8)
+    self.dust:setSpeed(20, 30)
+    self.dust:setSizes(1, 1 / 2, 1 / 4)
+    self.dust:setParticleLifetime(0.2, 0.2)
+
+    love.graphics.draw(self.dust)
+
+    -- Draw gun
+    love.graphics.draw(
+        self.inventory[self.slot].image,
+        self.position.x,
+        self.position.y - self.image:getHeight() / 2,
+        self:getGunAngle(),
+        1 + self.handDistortion,
+        self.direction,
+        self.inventory[self.slot].image:getWidth() / 2 - 4,
+        self.inventory[self.slot].image:getHeight() / 2
+    )
+
+    -- Draw player
+    love.graphics.draw(
+        self.image,
+        self.position.x,
+        self.position.y,
+        self.rotation,
+        self.direction,
+        1 + self.distortion,
+        self.image:getWidth() / 2,
+        self.image:getHeight()
+    )
+
+    -- Draw bullets
+    self:drawBullets()
+end
+
+function Player:hud()
+    -- Draw the bullet count
+    love.graphics.setColor(1, 1, 1, 1)
+    local ammoCount = love.graphics.newText(
+        love.graphics:getFont(), self.inventory[self.slot].ammo .. "/" .. self.inventory[self.slot].maxAmmo
+    )
+    love.graphics.draw(
+        ammoCount,
+        love.graphics.getWidth() - ammoCount:getWidth() - 8,
+        love.graphics.getHeight() - ammoCount:getHeight() - 8
+    )
+
+    -- Show if the player is reloading
+    if self.isReloading then
+        local reloadText = love.graphics.newText(love.graphics:getFont(), "Reloading...")
+        love.graphics.draw(
+            reloadText,
+            8,
+            love.graphics.getHeight() - reloadText:getHeight() - 8
         )
     end
 end

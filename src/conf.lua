@@ -18,6 +18,7 @@ function love.conf(t)
             hurt = "assets/audio/Hurt.wav",
             pickup = "assets/audio/Pickup.wav",
             shoot = "assets/audio/Shoot.wav",
+            reload = "assets/audio/Reload.wav",
         },
         maps = {
             "assets/maps/map.lua"

@@ -9,6 +9,10 @@ local cameraSmoothness = 10
 function love.load()
     love.graphics.setDefaultFilter("nearest", "nearest")
 
+    -- Font
+    local font = love.graphics.newFont("assets/fonts/Quinquefive-ALoRM.ttf", 16)
+    love.graphics.setFont(font)
+
     -- Mouse
     mouse = Vector(0, 0)
 
@@ -24,6 +28,8 @@ function love.load()
     for key, value in pairs(Config.audio) do
         Config.sounds[key] = love.audio.newSource(value, "static")
     end
+
+    Config.sounds.reload:setPitch(1.5)
 end
 
 function love.update(dt)
@@ -34,16 +40,24 @@ function love.update(dt)
 
     -- Use lerp to smooth camera movement
     camera:lookAt(
-        Lerp(camera.x, player.position.x, cameraSmoothness, dt),
-        Lerp(camera.y, player.position.y, cameraSmoothness, dt)
+        LerpDt(camera.x, player.position.x, cameraSmoothness, dt),
+        LerpDt(camera.y, player.position.y, cameraSmoothness, dt)
     )
 end
 
 function love.draw()
     camera:attach()
+
+    -- Draw world
     level:draw()
     player:draw()
+
     camera:detach()
+
+    -- Draw UI
+    player:hud()
 end
 
-function Lerp(a, b, x, dt) return a + (b - a) * (1.0 - math.exp(-x * dt)) end
+function LerpDt(a, b, x, dt) return a + (b - a) * (1.0 - math.exp(-x * dt)) end
+
+function Lerp(a, b, x) return a + (b - a) * x end
