@@ -9,9 +9,17 @@ local cameraSmoothness = 10
 function love.load()
     love.graphics.setDefaultFilter("nearest", "nearest")
 
+    -- Generate random seed
+    math.randomseed(os.time())
+
     -- Font
-    local font = love.graphics.newFont("assets/fonts/Quinquefive-ALoRM.ttf", 16)
-    love.graphics.setFont(font)
+    Config.fonts = {
+        default = love.graphics.newFont("assets/fonts/Quinquefive-ALoRM.ttf", 16),
+        large = love.graphics.newFont("assets/fonts/Quinquefive-ALoRM.ttf", 32),
+        small = love.graphics.newFont("assets/fonts/Quinquefive-ALoRM.ttf", 8),
+    }
+
+    love.graphics.setFont(Config.fonts.default)
 
     -- Mouse
     mouse = Vector(0, 0)
@@ -30,6 +38,19 @@ function love.load()
     end
 
     Config.sounds.reload:setPitch(1.5)
+
+    -- Shaders
+    Config.shaders.damage = love.graphics.newShader[[
+        vec4 effect(vec4 color, Image texture, vec2 texture_coords, vec2 screen_coords) {
+            vec4 pixel = Texel(texture, texture_coords);
+            if (pixel.a > 0.0) {
+                pixel.r = 1.0;
+                pixel.g = 0.0;
+                pixel.b = 0.0;
+            }
+            return pixel * color;
+        }
+    ]]
 end
 
 function love.update(dt)

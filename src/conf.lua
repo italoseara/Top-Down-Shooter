@@ -1,12 +1,14 @@
 function love.conf(t)
     t.window.width = 1280
     t.window.height = 720
+    t.console = true
 
     Config = {
         debug = false,
         scale = 7.5,
         sprites = {
             player = "assets/sprites/player/player.png",
+            ghost = "assets/sprites/enemies/ghost.png",
             blue = "assets/sprites/player/blue.png",
             gold = "assets/sprites/player/gold.png",
             red = "assets/sprites/player/red.png",
@@ -23,6 +25,7 @@ function love.conf(t)
         maps = {
             "assets/maps/map.lua"
         },
+        shaders = {},
         keybinds = {
             up = "w",
             down = "s",

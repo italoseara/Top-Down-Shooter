@@ -9,6 +9,7 @@ local Direction = {
 local Items = {
     BLUE_GUN = {
         name = "Blue",
+        damage = 6,
         cooldown = 0.15,
         automatic = false,
         bulletSpeed = 150,
@@ -20,6 +21,7 @@ local Items = {
     },
     GOLD_GUN = {
         name = "Gold",
+        damage = 5,
         cooldown = 0.1,
         automatic = true,
         bulletSpeed = 200,
@@ -31,6 +33,7 @@ local Items = {
     },
     RED_GUN = {
         name = "Red",
+        damage = 2,
         cooldown = 0.05,
         automatic = true,
         bulletSpeed = 300,
@@ -51,9 +54,9 @@ function Player:new(x, y)
     self.friction = 10
     self.speed = 1000
 
-    -- Image
-    self.image = love.graphics.newImage(Config.sprites.player)
-    self.bulletImage = love.graphics.newImage(Config.sprites.bullet)
+    -- Sprite
+    self.sprite = love.graphics.newImage(Config.sprites.player)
+    self.bulletSprite = love.graphics.newImage(Config.sprites.bullet)
 
     -- Gun
     self.lastUse = 0
@@ -69,7 +72,7 @@ function Player:new(x, y)
         Items.GOLD_GUN,
         Items.RED_GUN
     }
-    self.inventory[self.slot].image = love.graphics.newImage(Config.sprites[string.lower(self.inventory[self.slot].name)])
+    self:getHand().image = love.graphics.newImage(Config.sprites[string.lower(self:getHand().name)])
     self.lastSwap = 0
     self.lastReload = 0
     self.isReloading = false
@@ -85,14 +88,19 @@ function Player:new(x, y)
 
     -- Colliders
     self.collider = level.world:newBSGRectangleCollider(
-        self.position.x - self.image:getWidth() / 2 + 1,
-        self.position.y - self.image:getHeight(),
+        self.position.x - self.sprite:getWidth() / 2 + 1,
+        self.position.y - self.sprite:getHeight(),
         6, 8, 2
     )
     self.collider:setCollisionClass("Player")
     self.collider:setFixedRotation(true)
+    self.collider:setObject(self)
 
     self.bullets = {}
+end
+
+function Player:getHand()
+    return self.inventory[self.slot]
 end
 
 function Player:move(dt)
@@ -117,7 +125,7 @@ function Player:shoot()
             table.remove(self.bullets, i)
         end
 
-        if bullet:enter("Solid") then
+        if bullet:enter("Solid") or bullet:enter("Enemy") then
             bullet:destroy()
             table.remove(self.bullets, i)
         end
@@ -125,20 +133,20 @@ function Player:shoot()
 
     -- Shoot bullets
     if love.mouse.isDown(Config.keybinds.shoot) then
-        if self.inventory[self.slot].ammo <= 0 then return end
+        if self:getHand().ammo <= 0 then return end
         if self.isReloading then return end
-        if not self.inventory[self.slot].automatic and self.isHoldingFire then return end
+        if not self:getHand().automatic and self.isHoldingFire then return end
         if not self.isHoldingFire then self.isHoldingFire = true end
         if not self.isShooting then self.isShooting = true end
-        if love.timer.getTime() - self.lastUse < self.inventory[self.slot].cooldown then return end
+        if love.timer.getTime() - self.lastUse < self:getHand().cooldown then return end
 
         local direction = Vector(mouse.x, mouse.y) - self.position
         direction = direction:normalized()
 
         -- Apply a recoil force to the player
-        self.velocity = self.velocity - direction * self.inventory[self.slot].bulletSpeed / 5
+        self.velocity = self.velocity - direction * self:getHand().bulletSpeed / 5
 
-        direction = direction + Vector(math.random() * self.inventory[self.slot].spread - self.inventory[self.slot].spread / 2, math.random() * self.inventory[self.slot].spread - self.inventory[self.slot].spread / 2)
+        direction = direction + Vector(math.random() * self:getHand().spread - self:getHand().spread / 2, math.random() * self:getHand().spread - self:getHand().spread / 2)
 
         local bullet = level.world:newCircleCollider(
             self.collider:getX() + direction.x * 10,
@@ -149,15 +157,16 @@ function Player:shoot()
         self.lastUse = love.timer.getTime()
         bullet.creationTime = love.timer.getTime()
 
-        bullet.linearVelocityX, bullet.linearVelocityY = direction.x * self.inventory[self.slot].bulletSpeed, direction.y * self.inventory[self.slot].bulletSpeed
+        bullet.linearVelocityX, bullet.linearVelocityY = direction.x * self:getHand().bulletSpeed, direction.y * self:getHand().bulletSpeed
         bullet:setLinearVelocity(bullet.linearVelocityX, bullet.linearVelocityY)
         bullet:setCollisionClass("Bullet")
         bullet:setFixedRotation(true)
+        bullet:setObject(self)
 
         table.insert(self.bullets, bullet)
         love.audio.play(Config.sounds.shoot)
 
-        self.inventory[self.slot].ammo = self.inventory[self.slot].ammo - 1
+        self:getHand().ammo = self:getHand().ammo - 1
     end
 
     if self.isHoldingFire and not love.mouse.isDown(Config.keybinds.shoot) then self.isHoldingFire = false end
@@ -196,24 +205,24 @@ function Player:swapWeapon()
     end
 
     -- Update the player's gun image
-    self.inventory[self.slot].image = love.graphics.newImage(Config.sprites[string.lower(self.inventory[self.slot].name)])
+    self:getHand().image = love.graphics.newImage(Config.sprites[string.lower(self:getHand().name)])
 end
 
 function Player:reloadWeapon()
 
     if self.isHoldingReload and not love.keyboard.isDown(Config.keybinds.reload) then self.isHoldingReload = false end
 
-    if self.isReloading and love.timer.getTime() - self.lastReload > self.inventory[self.slot].reloadTime then
+    if self.isReloading and love.timer.getTime() - self.lastReload > self:getHand().reloadTime then
         self.isReloading = false
-        self.inventory[self.slot].ammo = self.inventory[self.slot].maxAmmo
+        self:getHand().ammo = self:getHand().maxAmmo
     end
 
     if love.keyboard.isDown(Config.keybinds.reload) then
         if self.isHoldingReload then return end
         if not self.isHoldingReload then self.isHoldingReload = true end
 
-        if self.inventory[self.slot].ammo == self.inventory[self.slot].maxAmmo then return end
-        if love.timer.getTime() - self.lastReload < self.inventory[self.slot].reloadTime then return end
+        if self:getHand().ammo == self:getHand().maxAmmo then return end
+        if love.timer.getTime() - self.lastReload < self:getHand().reloadTime then return end
 
         self.isReloading = true
         self.lastReload = love.timer.getTime()
@@ -234,7 +243,7 @@ end
 function Player:animate()
     if self.isShooting then
         -- Shake the camera when shooting
-        camera:move(-math.random() * self.inventory[self.slot].cameraShake, -math.random() * self.inventory[self.slot].cameraShake)
+        camera:move(-math.random() * self:getHand().cameraShake, -math.random() * self:getHand().cameraShake)
 
         -- Animate a recoil effect when shooting
         self.handDistortion = math.min(-math.sin((love.timer.getTime() - self.lastUse) * 20) * 2 / Config.scale, 0)
@@ -290,7 +299,7 @@ function Player:getGunAngle()
     end
 
     if self.direction == Direction.LEFT then
-        if gunAngle > math.rad(135) or gunAngle < -math.rad(90) then
+        if gunAngle > math.rad(225) or gunAngle < -math.rad(90) then
         gunAngle = Lerp(gunAngle, angle2, math.min(love.timer.getTime() - self.lastReload, 0.2) / 0.2)
         else
         gunAngle = Lerp(gunAngle, angle1, math.min(love.timer.getTime() - self.lastReload, 0.2) / 0.2)
@@ -318,14 +327,14 @@ function Player:drawBullets()
         love.graphics.setColor(1, 1, 1, 1)
 
         love.graphics.draw(
-            self.bulletImage,
+            self.bulletSprite,
             bullet:getX(),
             bullet:getY(),
             angle,
             1,
             1,
-            self.bulletImage:getWidth() / 2,
-            self.bulletImage:getHeight() / 2
+            self.bulletSprite:getWidth() / 2,
+            self.bulletSprite:getHeight() / 2
         )
     end
 end
@@ -348,26 +357,26 @@ function Player:draw()
 
     -- Draw gun
     love.graphics.draw(
-        self.inventory[self.slot].image,
+        self:getHand().image,
         self.position.x,
-        self.position.y - self.image:getHeight() / 2,
+        self.position.y - self.sprite:getHeight() / 2,
         self:getGunAngle(),
         1 + self.handDistortion,
         self.direction,
-        self.inventory[self.slot].image:getWidth() / 2 - 4,
-        self.inventory[self.slot].image:getHeight() / 2
+        self:getHand().image:getWidth() / 2 - 4,
+        self:getHand().image:getHeight() / 2
     )
 
     -- Draw player
     love.graphics.draw(
-        self.image,
+        self.sprite,
         self.position.x,
         self.position.y,
         self.rotation,
         self.direction,
         1 + self.distortion,
-        self.image:getWidth() / 2,
-        self.image:getHeight()
+        self.sprite:getWidth() / 2,
+        self.sprite:getHeight()
     )
 
     -- Draw bullets
@@ -378,7 +387,7 @@ function Player:hud()
     -- Draw the bullet count
     love.graphics.setColor(1, 1, 1, 1)
     local ammoCount = love.graphics.newText(
-        love.graphics:getFont(), self.inventory[self.slot].ammo .. "/" .. self.inventory[self.slot].maxAmmo
+        love.graphics:getFont(), self:getHand().ammo .. "/" .. self:getHand().maxAmmo
     )
     love.graphics.draw(
         ammoCount,
