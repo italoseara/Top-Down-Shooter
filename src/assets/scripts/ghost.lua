@@ -2,6 +2,8 @@ local Class = require("libs.classic")
 local Vector = require("libs.vector")
 local AStar = require("libs.astar")
 
+local Heal = require("assets.scripts.heal")
+
 local Ghost = Class:extend()
 
 function Ghost:new(level, x, y)
@@ -18,7 +20,7 @@ function Ghost:new(level, x, y)
 
     -- Health
     self.health = 100
-    self.lastDamage = 0
+    self.lastHit = 0
 
     -- Collider
     self.collider = self.level.world:newCircleCollider(
@@ -93,26 +95,29 @@ function Ghost:physics(dt)
     self.velocity = self.velocity * (1 - math.min(dt * self.friction, 1))
 
     if self.collider:enter("Bullet") then
-        self:hit()
+        self:hit(dt)
     end
 end
 
-function Ghost:hit()
+function Ghost:hit(dt)
     -- Apply knockback
     local bullet = self.collider:getEnterCollisionData("Bullet").collider:getObject()
-    self.velocity = self.velocity + -bullet.velocity * 2
+    self.velocity = self.velocity + -bullet.velocity:normalized() * math.exp(dt * 10) * bullet.velocity:len() * 3
 
     -- Take damage
-    self.lastDamage = love.timer.getTime()
+    self.lastHit = love.timer.getTime()
     self.health = self.health - player:getHand().damage
 
     -- Sound
-    love.audio.play(Config.sounds.hurt_enemy)
+    love.audio.play(Config.sounds.hurtEnemy)
 end
 
 function Ghost:die()
-    self.collider:destroy()
     self.level:removeEnemy(self)
+
+    if math.random() < 0.75 then
+        self.level:addObject(Heal(self.level, self.position.x, self.position.y))
+    end
 end
 
 function Ghost:update(dt)
@@ -131,7 +136,7 @@ end
 function Ghost:drawSprite()
     love.graphics.draw(self.sprite, self.position.x, self.position.y, 0, 1, 1, self.sprite:getWidth() / 2, self.sprite:getHeight())
     
-    if love.timer.getTime() - self.lastDamage < 0.1 then
+    if love.timer.getTime() - self.lastHit < 0.1 then
         love.graphics.setColor(1, 0, 0, 0.85)
         love.graphics.setShader(Config.shaders.damage)
         love.graphics.draw(self.sprite, self.position.x, self.position.y, 0, 1, 1, self.sprite:getWidth() / 2, self.sprite:getHeight())

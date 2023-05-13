@@ -26,7 +26,7 @@ function love.load()
 
     -- Load level and player
     level = Level(Config.maps[1])
-    player = Player(100, 100)
+    player = Player(100, 50)
 
     -- Camera
     camera = Camera(player.position.x, player.position.y, Config.scale)

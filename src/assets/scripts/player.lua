@@ -33,7 +33,7 @@ local Items = {
     },
     RED_GUN = {
         name = "Red",
-        damage = 2,
+        damage = 3,
         cooldown = 0.05,
         automatic = true,
         bulletSpeed = 300,
@@ -66,13 +66,14 @@ function Player:new(x, y)
     self.isHoldingFire = false
 
     -- Inventory
-    self.slot = 2
+    self.slot = 1
     self.inventory = {
         Items.BLUE_GUN,
         Items.GOLD_GUN,
         Items.RED_GUN
     }
-    self:getHand().image = love.graphics.newImage(Config.sprites[string.lower(self:getHand().name)])
+    self.inventory[self.slot].image = love.graphics.newImage(Config.sprites[string.lower(self:getHand().name)])
+
     self.lastSwap = 0
     self.lastReload = 0
     self.isReloading = false
@@ -97,6 +98,15 @@ function Player:new(x, y)
     self.collider:setObject(self)
 
     self.bullets = {}
+
+    -- Health
+    self.health = 150
+    self.maxHealth = 150
+    self.lastHit = 0
+
+    self.isDead = false
+
+    self.healthBar = love.graphics.newImage(Config.sprites.healthBar)
 end
 
 function Player:getHand()
@@ -116,8 +126,7 @@ function Player:move(dt)
     self.velocity = self.velocity + direction * self.speed * dt
 end
 
-function Player:shoot()
-    -- Destroy bullets after 2 seconds or when they hit a wall
+function Player:updateBullets()
     for i = #self.bullets, 1, -1 do
         local bullet = self.bullets[i]
         if love.timer.getTime() - bullet.creationTime > 2 then
@@ -130,7 +139,9 @@ function Player:shoot()
             table.remove(self.bullets, i)
         end
     end
+end
 
+function Player:shoot(dt)
     -- Shoot bullets
     if love.mouse.isDown(Config.keybinds.shoot) then
         if self:getHand().ammo <= 0 then return end
@@ -144,7 +155,7 @@ function Player:shoot()
         direction = direction:normalized()
 
         -- Apply a recoil force to the player
-        self.velocity = self.velocity - direction * self:getHand().bulletSpeed / 5
+        self.velocity = self.velocity - direction * self:getHand().bulletSpeed * math.exp(dt) / 5
 
         direction = direction + Vector(math.random() * self:getHand().spread - self:getHand().spread / 2, math.random() * self:getHand().spread - self:getHand().spread / 2)
 
@@ -232,15 +243,30 @@ function Player:reloadWeapon()
 end
 
 function Player:physics(dt)
+    self:updateBullets()
+
     -- Move the Collider
     self.collider:setLinearVelocity(self.velocity.x, self.velocity.y)
 
     self.position.x = self.collider:getX()
     self.position.y = self.collider:getY() + 4
     self.velocity = self.velocity * (1 - math.min(dt * self.friction, 1))
+
+    -- Check for hit
+    if self.collider:enter("Enemy") then
+        self:hit(dt)
+    end
 end
 
 function Player:animate()
+    if self.isDead then
+        self.distortion = 0
+        self.handDistortion = 0
+        self.rotation = math.rad(-90)
+        self.direction = Direction.RIGHT
+        return
+    end
+
     if self.isShooting then
         -- Shake the camera when shooting
         camera:move(-math.random() * self:getHand().cameraShake, -math.random() * self:getHand().cameraShake)
@@ -274,25 +300,49 @@ function Player:animate()
     if mouse.x < self.position.x then self.direction = Direction.LEFT end
 end
 
+function Player:hit(dt)
+    -- Apply knockback
+    local enemy = self.collider:getEnterCollisionData("Enemy").collider:getObject()
+    local direction = Vector(self.position.x - enemy.position.x, self.position.y - enemy.position.y):normalized()
+
+    self.velocity = self.velocity + direction * math.exp(dt * 10) * 200
+
+    if love.timer.getTime() - self.lastHit < 0.2 then return end
+
+    self.lastHit = love.timer.getTime()
+    self.health = self.health - math.random(10, 30)
+
+    if self.health <= 0 then
+        self.health = 0
+        self.isDead = true
+    end
+
+    love.audio.play(Config.sounds.hurt)
+end
+
 function Player:update(dt)
     self.dust:update(dt)
 
     self:animate()
+    self:physics(dt)
+
+    if self.isDead then return end
 
     self:move(dt)
-    self:physics(dt)
 
     self:swapWeapon()
     self:reloadWeapon()
-    self:shoot()
+    self:shoot(dt)
 end
 
 function Player:getGunAngle()
+    if self.isDead then return math.rad(-90) end
+
     local angle1 = math.rad(135)
     local angle2 = math.rad(-225)
     local angle3 = math.rad(45)
 
-    local gunAngle = math.atan2(mouse.y - self.position.y, mouse.x - self.position.x)
+    local gunAngle = math.atan2(mouse.y - self.position.y + self.sprite:getHeight() / 2, mouse.x - self.position.x)
 
     if not self.isReloading then
         return gunAngle
@@ -339,7 +389,7 @@ function Player:drawBullets()
     end
 end
 
-function Player:draw()
+function Player:drawDust()
     -- Draw dust particles
     self.dust:setPosition(self.position.x, self.position.y)
 
@@ -354,6 +404,10 @@ function Player:draw()
     self.dust:setParticleLifetime(0.2, 0.2)
 
     love.graphics.draw(self.dust)
+end
+
+function Player:drawGun()
+    if self.isDead then return end
 
     -- Draw gun
     love.graphics.draw(
@@ -367,11 +421,39 @@ function Player:draw()
         self:getHand().image:getHeight() / 2
     )
 
+    if love.timer.getTime() - self.lastHit < 0.1 then
+        love.graphics.setColor(1, 0, 0, 0.65)
+        love.graphics.setShader(Config.shaders.damage)
+        
+        love.graphics.draw(
+            self:getHand().image,
+            self.position.x,
+            self.position.y - self.sprite:getHeight() / 2,
+            self:getGunAngle(),
+            1 + self.handDistortion,
+            self.direction,
+            self:getHand().image:getWidth() / 2 - 4,
+            self:getHand().image:getHeight() / 2
+        )
+
+        love.graphics.setColor(1, 1, 1)
+        love.graphics.setShader()
+    end
+end
+
+function Player:drawSprite()
+    local posX, posY = self.position.x, self.position.y
+
+    if self.isDead then
+        posX = posX + self.sprite:getWidth() / 2
+        posY = posY - self.sprite:getHeight() / 2
+    end
+
     -- Draw player
     love.graphics.draw(
         self.sprite,
-        self.position.x,
-        self.position.y,
+        posX,
+        posY,
         self.rotation,
         self.direction,
         1 + self.distortion,
@@ -379,7 +461,30 @@ function Player:draw()
         self.sprite:getHeight()
     )
 
-    -- Draw bullets
+    if love.timer.getTime() - self.lastHit < 0.1 then
+        love.graphics.setColor(1, 0, 0, 0.65)
+        love.graphics.setShader(Config.shaders.damage)
+        
+        love.graphics.draw(
+            self.sprite,
+            posX,
+            posY,
+            self.rotation,
+            self.direction,
+            1 + self.distortion,
+            self.sprite:getWidth() / 2,
+            self.sprite:getHeight()
+        )
+
+        love.graphics.setColor(1, 1, 1)
+        love.graphics.setShader()
+    end
+end
+
+function Player:draw()
+    self:drawDust()
+    self:drawGun()
+    self:drawSprite()
     self:drawBullets()
 end
 
@@ -404,6 +509,26 @@ function Player:hud()
             love.graphics.getHeight() - reloadText:getHeight() - 8
         )
     end
+
+    -- Draw the health bar
+    local barScale = 6
+    local paddingX, paddingY = 2, 2
+    local marginX, marginY = 10, 10
+
+    if not (love.timer.getTime() - self.lastHit < 0.1) then
+        love.graphics.setColor(1, 0, 0, 1)
+    end
+    -- Fill the health bar with 2px padding vertical and 3px padding horizontal (6x scale)
+    love.graphics.rectangle(
+        "fill",
+        marginX + paddingX * barScale,
+        marginY + paddingY * barScale,
+        (self.health / self.maxHealth) * (self.healthBar:getWidth() * 6 - (2 * paddingX) * barScale),
+        self.healthBar:getHeight() * barScale - (2 * paddingY) * barScale
+    )
+
+    love.graphics.setColor(1, 1, 1, 1)
+    love.graphics.draw(self.healthBar, marginX, marginY, 0, barScale, barScale)
 end
 
 return Player

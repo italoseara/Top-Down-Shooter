@@ -8,15 +8,18 @@ function love.conf(t)
         scale = 7.5,
         sprites = {
             player = "assets/sprites/player/player.png",
+            healthBar = "assets/sprites/UI/gauge.png",
+            healthFill = "assets/sprites/UI/healthFill.png",
             ghost = "assets/sprites/enemies/ghost.png",
             blue = "assets/sprites/player/blue.png",
             gold = "assets/sprites/player/gold.png",
             red = "assets/sprites/player/red.png",
             bullet = "assets/sprites/player/bullet.png",
-            dust = "assets/sprites/particles/dust.png"
+            dust = "assets/sprites/particles/dust.png",
+            heal = "assets/sprites/items/heal_cross.png",
         },
         audio = {
-            hurt_enemy = "assets/audio/Hurt_enemy.wav",
+            hurtEnemy = "assets/audio/Hurt_enemy.wav",
             hurt = "assets/audio/Hurt.wav",
             pickup = "assets/audio/Pickup.wav",
             shoot = "assets/audio/Shoot.wav",
